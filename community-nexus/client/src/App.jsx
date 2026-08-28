@@ -16,20 +16,23 @@ const App = () => {
   const [analytics, setAnalytics] = useState(null);
   const [orgSettings, setOrgSettings] = useState(null);
 
-  // Logo component
-  const Logo = ({ size = 'medium' }) => {
-    const sizeClass = size === 'small' ? 'w-12 h-12' : size === 'large' ? 'w-40 h-40' : 'w-20 h-20';
-    return (
-      <div className={`${sizeClass} rounded-full bg-gradient-to-br from-blue-600 via-teal-500 to-green-500 p-1 flex-shrink-0`}>
-        <div className="w-full h-full rounded-full bg-white flex items-center justify-center border-4 border-blue-700">
-          <div className="text-center">
-            <div className="text-xs font-bold text-blue-700">NEXUS</div>
-            <div className="text-xs text-green-600">Community</div>
-          </div>
-        </div>
-      </div>
-    );
-  };
+  // Logo component - FIXED to use actual image
+const Logo = ({ size = 'medium' }) => {
+  const sizeClass = size === 'small' ? 'w-12 h-12' : size === 'large' ? 'w-40 h-40' : 'w-20 h-20';
+  
+  return (
+    <img 
+      src="/community-nexus-logo.png" 
+      alt="Community Nexus Logo" 
+      className={`${sizeClass} rounded-full object-cover shadow-md`}
+      onError={(e) => {
+        console.error('Logo image failed to load');
+        // Fallback to text if image fails
+        e.target.style.display = 'none';
+      }}
+    />
+  );
+};
 
   // Navigation component
   const Navigation = () => (

@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: community-nexus-backend
+    env: node
+    plan: free
+    buildCommand: cd server && npm install
+    startCommand: cd server && npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 5000
+      - key: DB_PATH
+        value: /var/data/community.db
+
+  - type: static
+    name: community-nexus-frontend
+    buildCommand: cd client && npm install && npm run build
+    staticPublishPath: client/dist
+    envVars:
+      - key: REACT_APP_API_URL
+        value: https://community-nexus-backend.onrender.com/api

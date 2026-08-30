@@ -771,10 +771,13 @@ const SuperAdminPage = ({
   handleCreateAdmin,
   createdAdminInfo,
   loading,
+  error,
 }) => (
   <div className="min-h-screen bg-gray-50 py-8 px-4">
     <div className="max-w-5xl mx-auto">
       <h2 className="text-3xl font-bold text-gray-800 mb-8">Super Admin — Manage Communities</h2>
+
+      {error && <div className="bg-red-100 text-red-700 p-3 rounded mb-6">{error}</div>}
 
       <div className="bg-white rounded-lg shadow-md p-6 mb-8">
         <h3 className="text-xl font-bold text-gray-800 mb-4">Create a New Community</h3>
@@ -1571,6 +1574,7 @@ const App = () => {
           handleCreateAdmin={handleCreateAdmin}
           createdAdminInfo={createdAdminInfo}
           loading={loading}
+          error={error}
         />
       );
     }

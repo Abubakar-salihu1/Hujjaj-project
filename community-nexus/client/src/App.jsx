@@ -583,7 +583,7 @@ const MembersPage = ({ members, currentUser, setCurrentPage }) => (
 );
 
 // Events page
-const EventsPage = ({ events, currentUser, myRsvps, handleRSVP, handleCancelRSVP, setCurrentPage }) => (
+const EventsPage = ({ events, currentUser, myRsvps, handleRSVP, handleCancelRSVP, setCurrentPage, setFormData, handleDeleteEvent }) => (
   <div className="min-h-screen bg-gray-50 py-8 px-4">
     <div className="max-w-7xl mx-auto">
       <div className="flex justify-between items-center mb-8">
@@ -630,6 +630,38 @@ const EventsPage = ({ events, currentUser, myRsvps, handleRSVP, handleCancelRSVP
                     RSVP - I'm Going
                   </button>
                 )}
+                {currentUser?.role === 'admin' && (
+                  <>
+                    <button
+                      onClick={() => {
+                        setFormData({
+                          id: event.id,
+                          title: event.title,
+                          description: event.description || '',
+                          date: event.date ? event.date.slice(0, 16) : '',
+                          location: event.location || '',
+                          capacity: event.capacity || '',
+                          event_type: event.event_type || '',
+                          status: event.status || 'upcoming',
+                        });
+                        setCurrentPage('create-event');
+                      }}
+                      className="bg-gray-200 text-gray-800 px-3 py-1 rounded-full text-xs font-semibold hover:bg-gray-300 transition"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (window.confirm('Delete this event? This cannot be undone.')) {
+                          handleDeleteEvent(event.id);
+                        }
+                      }}
+                      className="bg-red-100 text-red-700 px-3 py-1 rounded-full text-xs font-semibold hover:bg-red-200 transition"
+                    >
+                      Delete
+                    </button>
+                  </>
+                )}
               </div>
             </div>
           );
@@ -647,7 +679,7 @@ const EventsPage = ({ events, currentUser, myRsvps, handleRSVP, handleCancelRSVP
 );
 
 // Announcements page
-const AnnouncementsPage = ({ announcements, currentUser, setCurrentPage }) => (
+const AnnouncementsPage = ({ announcements, currentUser, setCurrentPage, setFormData, handleDeleteAnnouncement }) => (
   <div className="min-h-screen bg-gray-50 py-8 px-4">
     <div className="max-w-4xl mx-auto">
       <div className="flex justify-between items-center mb-8">
@@ -667,9 +699,40 @@ const AnnouncementsPage = ({ announcements, currentUser, setCurrentPage }) => (
           <div key={announcement.id} className="bg-white rounded-lg shadow-md p-6">
             <h3 className="text-2xl font-bold text-gray-800">{announcement.title}</h3>
             <p className="text-gray-700 mt-4">{announcement.content}</p>
-            <p className="text-xs text-gray-400 mt-4">
-              Posted: {new Date(announcement.created_at).toLocaleDateString()}
-            </p>
+            <div className="flex items-center justify-between mt-4">
+              <p className="text-xs text-gray-400">
+                Posted: {new Date(announcement.created_at).toLocaleDateString()}
+              </p>
+              {currentUser?.role === 'admin' && (
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => {
+                      setFormData({
+                        id: announcement.id,
+                        title: announcement.title,
+                        content: announcement.content,
+                        announcement_type: announcement.announcement_type || 'general',
+                        status: announcement.status || 'published',
+                      });
+                      setCurrentPage('create-announcement');
+                    }}
+                    className="bg-gray-200 text-gray-800 px-3 py-1 rounded-full text-xs font-semibold hover:bg-gray-300 transition"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (window.confirm('Delete this announcement? This cannot be undone.')) {
+                        handleDeleteAnnouncement(announcement.id);
+                      }
+                    }}
+                    className="bg-red-100 text-red-700 px-3 py-1 rounded-full text-xs font-semibold hover:bg-red-200 transition"
+                  >
+                    Delete
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         ))}
       </div>
@@ -960,7 +1023,7 @@ const AddMemberPage = ({ formData, setFormData, loading, handleAddMember, setCur
 const CreateEventPage = ({ formData, setFormData, loading, handleCreateEvent, setCurrentPage }) => (
   <div className="min-h-screen bg-gray-50 py-8 px-4">
     <div className="max-w-2xl mx-auto">
-      <h2 className="text-3xl font-bold text-gray-800 mb-8">Create Event</h2>
+      <h2 className="text-3xl font-bold text-gray-800 mb-8">{formData.id ? 'Edit Event' : 'Create Event'}</h2>
       <div className="bg-white rounded-lg shadow-md p-8">
         <form
           onSubmit={(e) => {
@@ -1020,11 +1083,14 @@ const CreateEventPage = ({ formData, setFormData, loading, handleCreateEvent, se
             disabled={loading}
             className="w-full bg-teal-600 text-white font-bold py-2 rounded-lg hover:bg-teal-700 transition disabled:opacity-50"
           >
-            {loading ? 'Creating event...' : 'Create Event'}
+            {loading ? (formData.id ? 'Saving...' : 'Creating event...') : formData.id ? 'Save Changes' : 'Create Event'}
           </button>
         </form>
         <button
-          onClick={() => setCurrentPage('events')}
+          onClick={() => {
+            setFormData({});
+            setCurrentPage('events');
+          }}
           className="w-full mt-4 bg-gray-200 text-gray-800 font-bold py-2 rounded-lg hover:bg-gray-300 transition"
         >
           Back to Events
@@ -1038,7 +1104,7 @@ const CreateEventPage = ({ formData, setFormData, loading, handleCreateEvent, se
 const CreateAnnouncementPage = ({ formData, setFormData, loading, handleCreateAnnouncement, setCurrentPage }) => (
   <div className="min-h-screen bg-gray-50 py-8 px-4">
     <div className="max-w-2xl mx-auto">
-      <h2 className="text-3xl font-bold text-gray-800 mb-8">Post Announcement</h2>
+      <h2 className="text-3xl font-bold text-gray-800 mb-8">{formData.id ? 'Edit Announcement' : 'Post Announcement'}</h2>
       <div className="bg-white rounded-lg shadow-md p-8">
         <form
           onSubmit={(e) => {
@@ -1071,11 +1137,14 @@ const CreateAnnouncementPage = ({ formData, setFormData, loading, handleCreateAn
             disabled={loading}
             className="w-full bg-green-600 text-white font-bold py-2 rounded-lg hover:bg-green-700 transition disabled:opacity-50"
           >
-            {loading ? 'Posting...' : 'Post Announcement'}
+            {loading ? (formData.id ? 'Saving...' : 'Posting...') : formData.id ? 'Save Changes' : 'Post Announcement'}
           </button>
         </form>
         <button
-          onClick={() => setCurrentPage('announcements')}
+          onClick={() => {
+            setFormData({});
+            setCurrentPage('announcements');
+          }}
           className="w-full mt-4 bg-gray-200 text-gray-800 font-bold py-2 rounded-lg hover:bg-gray-300 transition"
         >
           Back to Announcements
@@ -1280,9 +1349,11 @@ const App = () => {
 
   const handleCreateEvent = async () => {
     setLoading(true);
+    setError('');
+    const isEdit = Boolean(formData.id);
     try {
-      const response = await fetch(`${API_URL}/api/events`, {
-        method: 'POST',
+      const response = await fetch(`${API_URL}/api/events${isEdit ? `/${formData.id}` : ''}`, {
+        method: isEdit ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify(formData),
       });
@@ -1292,19 +1363,39 @@ const App = () => {
         fetchEvents();
       } else {
         const data = await response.json();
-        setError(data.error || 'Error creating event');
+        setError(data.error || `Error ${isEdit ? 'updating' : 'creating'} event`);
       }
     } catch (err) {
-      setError('Error creating event');
+      setError(`Error ${isEdit ? 'updating' : 'creating'} event`);
     }
     setLoading(false);
   };
 
+  const handleDeleteEvent = async (eventId) => {
+    setError('');
+    try {
+      const response = await fetch(`${API_URL}/api/events/${eventId}`, {
+        method: 'DELETE',
+        headers: { ...authHeaders() },
+      });
+      if (response.ok) {
+        fetchEvents();
+      } else {
+        const data = await response.json();
+        setError(data.error || 'Error deleting event');
+      }
+    } catch (err) {
+      setError('Error deleting event');
+    }
+  };
+
   const handleCreateAnnouncement = async () => {
     setLoading(true);
+    setError('');
+    const isEdit = Boolean(formData.id);
     try {
-      const response = await fetch(`${API_URL}/api/announcements`, {
-        method: 'POST',
+      const response = await fetch(`${API_URL}/api/announcements${isEdit ? `/${formData.id}` : ''}`, {
+        method: isEdit ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify(formData),
       });
@@ -1314,12 +1405,30 @@ const App = () => {
         fetchAnnouncements();
       } else {
         const data = await response.json();
-        setError(data.error || 'Error creating announcement');
+        setError(data.error || `Error ${isEdit ? 'updating' : 'creating'} announcement`);
       }
     } catch (err) {
-      setError('Error creating announcement');
+      setError(`Error ${isEdit ? 'updating' : 'creating'} announcement`);
     }
     setLoading(false);
+  };
+
+  const handleDeleteAnnouncement = async (announcementId) => {
+    setError('');
+    try {
+      const response = await fetch(`${API_URL}/api/announcements/${announcementId}`, {
+        method: 'DELETE',
+        headers: { ...authHeaders() },
+      });
+      if (response.ok) {
+        fetchAnnouncements();
+      } else {
+        const data = await response.json();
+        setError(data.error || 'Error deleting announcement');
+      }
+    } catch (err) {
+      setError('Error deleting announcement');
+    }
   };
 
   const handleRSVP = async (eventId) => {
@@ -1603,6 +1712,8 @@ const App = () => {
             handleRSVP={handleRSVP}
             handleCancelRSVP={handleCancelRSVP}
             setCurrentPage={setCurrentPage}
+            setFormData={setFormData}
+            handleDeleteEvent={handleDeleteEvent}
           />
         );
       case 'create-event':
@@ -1616,7 +1727,15 @@ const App = () => {
           />
         );
       case 'announcements':
-        return <AnnouncementsPage announcements={announcements} currentUser={currentUser} setCurrentPage={setCurrentPage} />;
+        return (
+          <AnnouncementsPage
+            announcements={announcements}
+            currentUser={currentUser}
+            setCurrentPage={setCurrentPage}
+            setFormData={setFormData}
+            handleDeleteAnnouncement={handleDeleteAnnouncement}
+          />
+        );
       case 'create-announcement':
         return (
           <CreateAnnouncementPage

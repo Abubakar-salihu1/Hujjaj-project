@@ -25,6 +25,26 @@ const hashPassword = (password) => {
   return crypto.createHash('sha256').update(password).digest('hex');
 };
 
+const slugify = (text) =>
+  text
+    .toString()
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'community';
+
+const generateUniqueSlug = async (client, name) => {
+  const base = slugify(name);
+  let slug = base;
+  let counter = 2;
+  while (true) {
+    const existing = await client.query(`SELECT id FROM organizations WHERE slug = $1`, [slug]);
+    if (existing.rows.length === 0) return slug;
+    slug = `${base}-${counter}`;
+    counter += 1;
+  }
+};
+
 // ===== AUTH MIDDLEWARE =====
 
 function authenticateToken(req, res, next) {
@@ -66,9 +86,13 @@ const initializeDatabase = async () => {
         id SERIAL PRIMARY KEY,
         name TEXT NOT NULL,
         tagline TEXT,
+        status TEXT DEFAULT 'active',
+        slug TEXT UNIQUE,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
+    await client.query(`ALTER TABLE organizations ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'active'`);
+    await client.query(`ALTER TABLE organizations ADD COLUMN IF NOT EXISTS slug TEXT UNIQUE`);
 
     await client.query(`
       CREATE TABLE IF NOT EXISTS users (
@@ -161,13 +185,21 @@ const initializeDatabase = async () => {
     let firstOrgId;
     const orgCheck = await client.query(`SELECT id FROM organizations ORDER BY id ASC LIMIT 1`);
     if (orgCheck.rows.length === 0) {
+      const firstSlug = await generateUniqueSlug(client, 'Abuja Community Organization');
       const orgResult = await client.query(
-        `INSERT INTO organizations (name, tagline) VALUES ($1, $2) RETURNING id`,
-        ['Abuja Community Organization', 'Together, Stronger and Better']
+        `INSERT INTO organizations (name, tagline, slug) VALUES ($1, $2, $3) RETURNING id`,
+        ['Abuja Community Organization', 'Together, Stronger and Better', firstSlug]
       );
       firstOrgId = orgResult.rows[0].id;
     } else {
       firstOrgId = orgCheck.rows[0].id;
+    }
+
+    // Backfill slugs for any organizations created before slugs existed
+    const orgsMissingSlug = await client.query(`SELECT id, name FROM organizations WHERE slug IS NULL`);
+    for (const row of orgsMissingSlug.rows) {
+      const generatedSlug = await generateUniqueSlug(client, row.name);
+      await client.query(`UPDATE organizations SET slug = $1 WHERE id = $2`, [generatedSlug, row.id]);
     }
 
     // Backfill any existing rows that predate multi-tenancy into the first organization
@@ -226,7 +258,7 @@ app.post('/api/auth/login', async (req, res) => {
 
   try {
     const result = await pool.query(
-      `SELECT u.id, u.email, u.name, u.role, u.organization_id, o.name AS organization_name
+      `SELECT u.id, u.email, u.name, u.role, u.organization_id, o.name AS organization_name, o.status AS organization_status, o.slug AS organization_slug
        FROM users u
        LEFT JOIN organizations o ON o.id = u.organization_id
        WHERE u.email = $1 AND u.password = $2`,
@@ -238,6 +270,11 @@ app.post('/api/auth/login', async (req, res) => {
     }
 
     const user = result.rows[0];
+
+    if (user.role !== 'super_admin' && user.organization_status === 'suspended') {
+      return res.status(403).json({ error: 'This community has been suspended. Please contact the platform administrator.' });
+    }
+
     const token = jwt.sign(
       { id: user.id, email: user.email, role: user.role, name: user.name, organization_id: user.organization_id },
       JWT_SECRET,
@@ -265,8 +302,8 @@ app.post('/api/auth/register', async (req, res) => {
       [email, hashedPassword, name, organization_id]
     );
 
-    const orgResult = await pool.query(`SELECT name FROM organizations WHERE id = $1`, [organization_id]);
-    const user = { ...result.rows[0], organization_name: orgResult.rows[0]?.name };
+    const orgResult = await pool.query(`SELECT name, slug FROM organizations WHERE id = $1`, [organization_id]);
+    const user = { ...result.rows[0], organization_name: orgResult.rows[0]?.name, organization_slug: orgResult.rows[0]?.slug };
 
     const token = jwt.sign(
       { id: user.id, email: user.email, role: user.role, name: user.name, organization_id: user.organization_id },
@@ -341,7 +378,33 @@ app.post('/api/auth/forgot-password', async (req, res) => {
 
 app.get('/api/organizations', async (req, res) => {
   try {
-    const result = await pool.query(`SELECT id, name, tagline FROM organizations ORDER BY name ASC`);
+    const result = await pool.query(`SELECT id, name, tagline, slug FROM organizations WHERE status = 'active' ORDER BY name ASC`);
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
+// Look up a single community by its URL slug (used for /:slug deep links)
+app.get('/api/organizations/slug/:slug', async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT id, name, tagline, slug, status FROM organizations WHERE slug = $1`,
+      [req.params.slug]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Community not found' });
+    }
+    res.json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
+// Super Admin sees all communities including suspended ones
+app.get('/api/admin/organizations', authenticateToken, requireSuperAdmin, async (req, res) => {
+  try {
+    const result = await pool.query(`SELECT id, name, tagline, status, slug FROM organizations ORDER BY name ASC`);
     res.json(result.rows);
   } catch (err) {
     res.status(500).json({ error: 'Database error' });
@@ -355,14 +418,34 @@ app.post('/api/organizations', authenticateToken, requireSuperAdmin, async (req,
     return res.status(400).json({ error: 'Community name required' });
   }
 
+  const client = await pool.connect();
   try {
-    const result = await pool.query(
-      `INSERT INTO organizations (name, tagline) VALUES ($1, $2) RETURNING id`,
-      [name, tagline || null]
+    const slug = await generateUniqueSlug(client, name);
+    const result = await client.query(
+      `INSERT INTO organizations (name, tagline, slug) VALUES ($1, $2, $3) RETURNING id, slug`,
+      [name, tagline || null, slug]
     );
-    res.status(201).json({ id: result.rows[0].id, success: true });
+    res.status(201).json({ id: result.rows[0].id, slug: result.rows[0].slug, success: true });
   } catch (err) {
     res.status(500).json({ error: 'Error creating community' });
+  } finally {
+    client.release();
+  }
+});
+
+// Suspend or reactivate a community
+app.post('/api/organizations/:id/status', authenticateToken, requireSuperAdmin, async (req, res) => {
+  const { status } = req.body;
+
+  if (!['active', 'suspended'].includes(status)) {
+    return res.status(400).json({ error: "Status must be 'active' or 'suspended'" });
+  }
+
+  try {
+    await pool.query(`UPDATE organizations SET status = $1 WHERE id = $2`, [status, req.params.id]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Error updating community status' });
   }
 });
 
@@ -387,6 +470,31 @@ app.post('/api/organizations/:id/admin', authenticateToken, requireSuperAdmin, a
       return res.status(409).json({ error: 'Email already registered' });
     }
     res.status(500).json({ error: 'Error assigning admin' });
+  }
+});
+
+// Platform-wide analytics for the Super Admin
+app.get('/api/admin/platform-analytics', authenticateToken, requireSuperAdmin, async (req, res) => {
+  try {
+    const [orgCount, activeOrgCount, memberCount, eventCount, announcementCount, adminCount] = await Promise.all([
+      pool.query(`SELECT COUNT(*) as total FROM organizations`),
+      pool.query(`SELECT COUNT(*) as total FROM organizations WHERE status = 'active'`),
+      pool.query(`SELECT COUNT(*) as total FROM members`),
+      pool.query(`SELECT COUNT(*) as total FROM events`),
+      pool.query(`SELECT COUNT(*) as total FROM announcements`),
+      pool.query(`SELECT COUNT(*) as total FROM users WHERE role = 'admin'`),
+    ]);
+
+    res.json({
+      totalCommunities: parseInt(orgCount.rows[0]?.total) || 0,
+      activeCommunities: parseInt(activeOrgCount.rows[0]?.total) || 0,
+      totalMembers: parseInt(memberCount.rows[0]?.total) || 0,
+      totalEvents: parseInt(eventCount.rows[0]?.total) || 0,
+      totalAnnouncements: parseInt(announcementCount.rows[0]?.total) || 0,
+      totalCommunityAdmins: parseInt(adminCount.rows[0]?.total) || 0,
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Error fetching platform analytics' });
   }
 });
 

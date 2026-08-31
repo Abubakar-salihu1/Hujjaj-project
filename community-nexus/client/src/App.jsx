@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { BrowserRouter, Routes, Route, useNavigate, useParams } from 'react-router-dom';
 import { Heart, LogOut, Menu, X, Plus, Calendar, Bell, Users, Settings, BarChart3, TrendingUp, Activity, Check, Building2, Key } from 'lucide-react';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
@@ -21,7 +22,14 @@ const Logo = ({ size = 'medium' }) => {
 };
 
 // Navigation component
-const Navigation = ({ currentUser, setCurrentUser, currentPage, setCurrentPage, menuOpen, setMenuOpen }) => (
+const Navigation = ({ currentUser, setCurrentUser, currentPage, setCurrentPage, menuOpen, setMenuOpen }) => {
+  const navigate = useNavigate();
+  const doLogout = () => {
+    setCurrentUser(null);
+    setCurrentPage('login');
+    navigate('/');
+  };
+  return (
   <nav className="bg-gradient-to-r from-gray-900 via-blue-900 to-teal-900 text-white shadow-lg">
     <div className="max-w-7xl mx-auto px-4">
       <div className="flex justify-between items-center h-16">
@@ -67,10 +75,7 @@ const Navigation = ({ currentUser, setCurrentUser, currentPage, setCurrentPage, 
                 Change Password
               </button>
               <button
-                onClick={() => {
-                  setCurrentUser(null);
-                  setCurrentPage('login');
-                }}
+                onClick={doLogout}
                 className="hover:text-red-400 transition"
               >
                 Logout
@@ -158,8 +163,7 @@ const Navigation = ({ currentUser, setCurrentUser, currentPage, setCurrentPage, 
           </button>
           <button
             onClick={() => {
-              setCurrentUser(null);
-              setCurrentPage('login');
+              doLogout();
               setMenuOpen(false);
             }}
             className="block w-full text-left py-2 hover:text-red-400"
@@ -170,10 +174,13 @@ const Navigation = ({ currentUser, setCurrentUser, currentPage, setCurrentPage, 
       )}
     </div>
   </nav>
-);
+  );
+};
 
 // Community Picker — landing page listing all communities
-const CommunityPickerPage = ({ organizations, setCurrentPage, setFormData }) => (
+const CommunityPickerPage = ({ organizations, setCurrentPage, setFormData }) => {
+  const navigate = useNavigate();
+  return (
   <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50 py-12 px-4">
     <div className="max-w-4xl mx-auto">
       <div className="flex justify-center mb-6">
@@ -192,7 +199,11 @@ const CommunityPickerPage = ({ organizations, setCurrentPage, setFormData }) => 
             {org.tagline && <p className="text-gray-600 text-sm mb-4">{org.tagline}</p>}
             <div className="mt-auto flex gap-2">
               <button
-                onClick={() => setCurrentPage('login')}
+                onClick={() => {
+                  setFormData({ organization_id: org.id });
+                  setCurrentPage('login');
+                  navigate(`/${org.slug}`);
+                }}
                 className="flex-1 bg-teal-600 text-white px-4 py-2 rounded-lg hover:bg-teal-700 transition text-sm font-semibold"
               >
                 Login
@@ -201,6 +212,7 @@ const CommunityPickerPage = ({ organizations, setCurrentPage, setFormData }) => 
                 onClick={() => {
                   setFormData({ organization_id: org.id });
                   setCurrentPage('register');
+                  navigate(`/${org.slug}`);
                 }}
                 className="flex-1 bg-gray-200 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-300 transition text-sm font-semibold"
               >
@@ -227,7 +239,8 @@ const CommunityPickerPage = ({ organizations, setCurrentPage, setFormData }) => 
       <p className="text-center text-xs text-gray-400 mt-10">Authored: Yahaya Ismail</p>
     </div>
   </div>
-);
+  );
+};
 
 // Login page
 const LoginPage = ({ error, formData, setFormData, loading, handleLogin, setCurrentPage }) => (
@@ -835,12 +848,25 @@ const SuperAdminPage = ({
   createdAdminInfo,
   loading,
   error,
+  platformAnalytics,
+  handleToggleOrgStatus,
 }) => (
   <div className="min-h-screen bg-gray-50 py-8 px-4">
     <div className="max-w-5xl mx-auto">
       <h2 className="text-3xl font-bold text-gray-800 mb-8">Super Admin — Manage Communities</h2>
 
       {error && <div className="bg-red-100 text-red-700 p-3 rounded mb-6">{error}</div>}
+
+      {platformAnalytics && (
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-8">
+          <StatCard icon={<Building2 size={24} />} title="Communities" value={platformAnalytics.totalCommunities} color="blue" />
+          <StatCard icon={<Building2 size={24} />} title="Active Communities" value={platformAnalytics.activeCommunities} color="teal" />
+          <StatCard icon={<Users size={24} />} title="Total Members" value={platformAnalytics.totalMembers} color="green" />
+          <StatCard icon={<Calendar size={24} />} title="Total Events" value={platformAnalytics.totalEvents} color="orange" />
+          <StatCard icon={<Bell size={24} />} title="Total Announcements" value={platformAnalytics.totalAnnouncements} color="blue" />
+          <StatCard icon={<Users size={24} />} title="Community Admins" value={platformAnalytics.totalCommunityAdmins} color="teal" />
+        </div>
+      )}
 
       <div className="bg-white rounded-lg shadow-md p-6 mb-8">
         <h3 className="text-xl font-bold text-gray-800 mb-4">Create a New Community</h3>
@@ -888,9 +914,28 @@ const SuperAdminPage = ({
       <div className="space-y-4">
         {organizations.map((org) => (
           <div key={org.id} className="bg-white rounded-lg shadow-md p-6">
-            <div className="flex items-center gap-2 mb-2">
-              <Building2 className="text-teal-600" size={20} />
-              <h4 className="font-bold text-gray-800 text-lg">{org.name}</h4>
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <Building2 className="text-teal-600" size={20} />
+                <h4 className="font-bold text-gray-800 text-lg">{org.name}</h4>
+                <span
+                  className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
+                    org.status === 'suspended' ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'
+                  }`}
+                >
+                  {org.status === 'suspended' ? 'Suspended' : 'Active'}
+                </span>
+              </div>
+              <button
+                onClick={() => handleToggleOrgStatus(org.id, org.status === 'suspended' ? 'active' : 'suspended')}
+                className={`px-3 py-1 rounded-lg text-xs font-semibold transition whitespace-nowrap ${
+                  org.status === 'suspended'
+                    ? 'bg-green-600 text-white hover:bg-green-700'
+                    : 'bg-red-100 text-red-700 hover:bg-red-200'
+                }`}
+              >
+                {org.status === 'suspended' ? 'Reactivate' : 'Suspend'}
+              </button>
             </div>
             {org.tagline && <p className="text-gray-600 text-sm mb-4">{org.tagline}</p>}
 
@@ -1176,7 +1221,9 @@ const StatCard = ({ icon, title, value, color }) => {
   );
 };
 
-const App = () => {
+const AppInner = () => {
+  const navigate = useNavigate();
+  const { slug } = useParams();
   const [currentUser, setCurrentUser] = useState(null);
   const [currentPage, setCurrentPage] = useState('community-picker');
   const [menuOpen, setMenuOpen] = useState(false);
@@ -1195,6 +1242,7 @@ const App = () => {
   const [newOrgForm, setNewOrgForm] = useState({});
   const [newAdminForms, setNewAdminForms] = useState({});
   const [createdAdminInfo, setCreatedAdminInfo] = useState(null);
+  const [platformAnalytics, setPlatformAnalytics] = useState(null);
 
   const authHeaders = (user = currentUser) => (user?.token ? { Authorization: `Bearer ${user.token}` } : {});
 
@@ -1202,12 +1250,56 @@ const App = () => {
     fetchOrganizations();
   }, []);
 
+  // Support direct links like /abuja-community-organization — resolve the slug to a community
+  useEffect(() => {
+    if (!slug || currentUser) return;
+    const resolveSlug = async () => {
+      try {
+        const response = await fetch(`${API_URL}/api/organizations/slug/${slug}`);
+        const org = await response.json();
+        if (response.ok) {
+          if (org.status === 'suspended') {
+            setError('This community has been suspended. Please contact the platform administrator.');
+            navigate('/');
+            return;
+          }
+          setFormData((prev) => ({ ...prev, organization_id: org.id }));
+          setCurrentPage('login');
+        } else {
+          setError('Community not found');
+          navigate('/');
+        }
+      } catch (err) {
+        console.error('Error resolving community link:', err);
+      }
+    };
+    resolveSlug();
+  }, [slug]);
+
   const fetchOrganizations = async () => {
     try {
       const response = await fetch(`${API_URL}/api/organizations`);
       setOrganizations(await response.json());
     } catch (err) {
       console.error('Error fetching organizations:', err);
+    }
+  };
+
+  const fetchAdminOrganizations = async (user = currentUser) => {
+    try {
+      const response = await fetch(`${API_URL}/api/admin/organizations`, { headers: { ...authHeaders(user) } });
+      setOrganizations(await response.json());
+    } catch (err) {
+      console.error('Error fetching organizations:', err);
+    }
+  };
+
+  const fetchPlatformAnalytics = async (user = currentUser) => {
+    try {
+      const response = await fetch(`${API_URL}/api/admin/platform-analytics`, { headers: { ...authHeaders(user) } });
+      setPlatformAnalytics(await response.json());
+    } catch (err) {
+      console.error('Error fetching platform analytics:', err);
     }
   };
 
@@ -1228,8 +1320,11 @@ const App = () => {
         setCurrentPage(userWithToken.role === 'super_admin' ? 'super-admin' : 'dashboard');
         setFormData({});
         if (userWithToken.role === 'super_admin') {
-          fetchOrganizations();
+          navigate('/super-admin');
+          fetchAdminOrganizations(userWithToken);
+          fetchPlatformAnalytics(userWithToken);
         } else {
+          navigate(`/${userWithToken.organization_slug || slug || ''}`);
           fetchAllData(userWithToken);
         }
       } else {
@@ -1266,6 +1361,7 @@ const App = () => {
         setCurrentUser(userWithToken);
         setCurrentPage('dashboard');
         setFormData({});
+        navigate(`/${userWithToken.organization_slug || slug || ''}`);
         fetchAllData(userWithToken);
       } else {
         setError(data.error || 'Registration failed');
@@ -1499,7 +1595,8 @@ const App = () => {
       });
       if (response.ok) {
         setNewOrgForm({});
-        fetchOrganizations();
+        fetchAdminOrganizations();
+        fetchPlatformAnalytics();
       } else {
         const data = await response.json();
         setError(data.error || 'Error creating community');
@@ -1508,6 +1605,26 @@ const App = () => {
       setError('Error creating community');
     }
     setLoading(false);
+  };
+
+  const handleToggleOrgStatus = async (organizationId, newStatus) => {
+    setError('');
+    try {
+      const response = await fetch(`${API_URL}/api/organizations/${organizationId}/status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify({ status: newStatus }),
+      });
+      if (response.ok) {
+        fetchAdminOrganizations();
+        fetchPlatformAnalytics();
+      } else {
+        const data = await response.json();
+        setError(data.error || 'Error updating community status');
+      }
+    } catch (err) {
+      setError('Error updating community status');
+    }
   };
 
   const handleCreateAdmin = async (organizationId, organizationName) => {
@@ -1523,6 +1640,7 @@ const App = () => {
       if (response.ok) {
         setCreatedAdminInfo({ organization_name: organizationName, email: adminForm.email, password: data.default_password });
         setNewAdminForms({ ...newAdminForms, [organizationId]: {} });
+        fetchPlatformAnalytics();
       } else {
         setError(data.error || 'Error assigning admin');
       }
@@ -1684,6 +1802,8 @@ const App = () => {
           createdAdminInfo={createdAdminInfo}
           loading={loading}
           error={error}
+          platformAnalytics={platformAnalytics}
+          handleToggleOrgStatus={handleToggleOrgStatus}
         />
       );
     }
@@ -1778,5 +1898,16 @@ const App = () => {
     </div>
   );
 };
+
+const App = () => (
+  <BrowserRouter>
+    <Routes>
+      <Route path="/super-admin" element={<AppInner />} />
+      <Route path="/change-password" element={<AppInner />} />
+      <Route path="/:slug" element={<AppInner />} />
+      <Route path="/" element={<AppInner />} />
+    </Routes>
+  </BrowserRouter>
+);
 
 export default App;
